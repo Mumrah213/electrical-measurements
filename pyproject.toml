@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "emeas"
+version = "0.1.0"
+description = "Self-standing electrical measurement setup over GPIB (with dummy backend)"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "pyvisa>=1.13",
+    "numpy>=1.24",
+    "pandas>=2.0",
+    "h5py>=3.8",
+    "scipy>=1.10",
+]
+
+[project.optional-dependencies]
+gui = ["PyQt6>=6.5", "pyqtgraph>=0.13"]
+dev = ["pytest>=7", "PyQt6>=6.5", "pyqtgraph>=0.13"]
+
+[project.scripts]
+emeas-gui = "emeas.gui.app:main"
+
+[tool.setuptools.packages.find]
+include = ["emeas*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
