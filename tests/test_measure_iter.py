@@ -11,6 +11,7 @@ from emeas import (
     map_2d,
 )
 from emeas.dummy import ResistorModel
+from emeas.measure import iter_linear_sweep_group, iter_map_2d_group
 
 
 def _rig(gain=1.0):
@@ -55,6 +56,31 @@ def test_map_2d_wrapper_drops_indices():
     df = map_2d(src, sy, meter, np.linspace(-1, 1, 3), np.linspace(0, 1, 2))
     assert list(df.columns) == ["bias", "gate", "reading"]
     assert "ix" not in df.columns
+
+
+def test_iter_linear_sweep_group_lockstep():
+    _, src, meter = _rig()
+    src2 = YokogawaGS200(DummyTransport(), name="gate")
+    pts = list(iter_linear_sweep_group([src, src2], [(-1, 1), (-0.5, 0.5)], meter, 5))
+    assert len(pts) == 5
+    assert set(pts[0]) == {"bias", "gate", "reading"}
+    assert pts[0]["bias"] == pytest.approx(-1.0)
+    assert pts[0]["gate"] == pytest.approx(-0.5)
+    assert pts[-1]["bias"] == pytest.approx(1.0)
+    assert pts[-1]["gate"] == pytest.approx(0.5)
+
+
+def test_iter_map_2d_group_indices_and_lockstep():
+    _, src, meter = _rig()
+    src2 = YokogawaGS200(DummyTransport(), name="bias2")
+    sy = YokogawaGS200(DummyTransport(), name="gate")
+    pts = list(iter_map_2d_group([src, src2], [(-1, 1), (-0.5, 0.5)], 3, [sy], [(0, 1)], 2, meter))
+    assert len(pts) == 6
+    assert pts[0]["ix"] == 0 and pts[0]["iy"] == 0
+    assert pts[-1]["ix"] == 2 and pts[-1]["iy"] == 1
+    assert {"ix", "iy", "bias", "bias2", "gate", "reading"} == set(pts[0])
+    assert pts[0]["bias"] == pytest.approx(-1.0)
+    assert pts[0]["bias2"] == pytest.approx(-0.5)
 
 
 def test_settings_shapes():

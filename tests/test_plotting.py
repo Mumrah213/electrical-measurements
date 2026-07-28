@@ -82,3 +82,42 @@ def test_diamond_grid_raw_vs_didv():
 def test_quantity_default_is_didv():
     assert plotting.QUANTITIES[0] == "dI/dV"
     assert plotting.COLORMAPS[0] == "viridis"
+
+
+def test_didv_levels_clips_outlier_spikes():
+    # a near-zero background with a few sharp positive spikes -- a plain
+    # min/max (or symmetric diverging range) would stretch the color scale to
+    # the spikes and wash out the background; percentile clipping shouldn't.
+    background = np.linspace(0.0, 1.0, 990)  # bulk of the data: small values
+    spikes = np.full(10, 100.0)              # ~1% of pixels: extreme conducting edge
+    grid = np.concatenate([background, spikes]).reshape(1, -1)
+    lo, hi = plotting.didv_levels(grid)
+    assert hi < 100.0  # clipped well below the extreme spikes
+    assert hi > 0.0
+
+
+def test_didv_levels_allows_small_negative_floor():
+    grid = np.array([[-5.0, 0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0]])
+    lo, hi = plotting.didv_levels(grid)
+    assert lo < 0.0            # a little below zero is allowed
+    assert abs(lo) < hi * 0.2  # but nowhere near a symmetric range
+
+
+def test_didv_levels_handles_all_nan_and_all_nonpositive():
+    assert plotting.didv_levels(np.full((2, 2), np.nan)) == (0.0, 1.0)
+    lo, hi = plotting.didv_levels(np.array([[-3.0, -1.0, -2.0]]))
+    assert hi > lo  # non-degenerate even with no positive values
+
+
+def test_set_image_uses_explicit_levels_over_diverging():
+    import pyqtgraph as pg
+    pytest.importorskip("PyQt6")
+    from PyQt6.QtWidgets import QApplication
+
+    QApplication.instance() or QApplication([])
+    iv = pg.ImageView(view=pg.PlotItem())
+    grid = np.array([[-1.0, 10.0]])
+    plotting.set_image(iv, grid, levels=(-0.5, 2.0), diverging=True)
+    # explicit levels win even though diverging=True would otherwise force
+    # a symmetric range around the true min/max
+    assert iv.getHistogramWidget().item.getLevels() == (-0.5, 2.0)

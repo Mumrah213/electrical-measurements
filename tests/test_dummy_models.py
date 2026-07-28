@@ -46,6 +46,33 @@ def test_diamond_blockade_at_centre_conduction_at_edge():
     assert meter.read() > 0.4
 
 
+def test_extra_channel_on_shared_dut_keeps_independent_setpoint():
+    """A 3rd instrument sharing a DUT (e.g. a fixed sidegate) must not clobber
+    or be clobbered by bias/gate's setpoint -- regression test for the bug
+    where DeviceModel.node_voltage was a single shared field regardless of
+    channel."""
+    dut = CoulombDiamondModel(noise=0.0)
+    bias = YokogawaGS200(DummyTransport(dut, channel="bias"), name="Vsd")
+    extra = YokogawaGS200(DummyTransport(dut, channel="yoko3"), name="yoko3")
+
+    extra.set_voltage(1.23)
+    bias.set_voltage(0.3)
+
+    assert extra.get_voltage() == pytest.approx(1.23)
+    assert bias.get_voltage() == pytest.approx(0.3)
+    assert dut.v_bias == pytest.approx(0.3)
+
+
+def test_resistor_model_default_channel_readback():
+    """A lone unchanneled instrument keeps its setpoint readback (no channel= given)."""
+    from emeas.dummy import ResistorModel
+
+    dut = ResistorModel(resistance=1e3)
+    src = YokogawaGS200(DummyTransport(dut), name="V")
+    src.set_voltage(0.75)
+    assert src.get_voltage() == pytest.approx(0.75)
+
+
 def test_diamond_map_is_periodic_in_gate():
     dut = CoulombDiamondModel(period=0.4, ec=0.3, gamma=0.03, noise=0.0)
     bias = YokogawaGS200(DummyTransport(dut, channel="bias"), name="Vsd")

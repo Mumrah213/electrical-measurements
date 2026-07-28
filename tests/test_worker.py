@@ -1,20 +1,31 @@
 """Worker tests -- exercise the QThread + signals path without any display.
 
-Uses QCoreApplication (no widgets) so it runs headless in CI.
+Uses QApplication (not just QCoreApplication) so the process-wide app
+singleton is compatible with other test modules in this suite that build
+actual widgets (QApplication is a QCoreApplication subclass, so this is a
+strict superset and still runs fine headless via QT_QPA_PLATFORM=offscreen).
 """
 
 import pytest
 
 pytest.importorskip("PyQt6")
 
-from PyQt6.QtCore import QCoreApplication, QThread, QTimer  # noqa: E402
+from PyQt6.QtCore import QThread, QTimer  # noqa: E402
+from PyQt6.QtWidgets import QApplication  # noqa: E402
 
 from emeas.gui.worker import MeasurementWorker  # noqa: E402
 
 
+#: module-level reference -- keeps the QApplication singleton's Python
+#: wrapper alive between calls (otherwise PyQt6 can garbage-collect the
+#: underlying C++ object and crash the next Qt object construction).
+_qapp = None
+
+
 def _app():
-    app = QCoreApplication.instance()
-    return app or QCoreApplication([])
+    global _qapp
+    _qapp = QApplication.instance() or QApplication([])
+    return _qapp
 
 
 def _run_worker(gen, stop_after=None):
