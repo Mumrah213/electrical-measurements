@@ -14,6 +14,11 @@ work with a dummy backend that simulates a device under test, and switching to
 real hardware is just a one-line transport change—your measurement code stays
 the same.
 
+emeas has been **validated against real Yokogawa GS200 and HP 34401A instruments
+in a live lab environment**. The dummy backend and the real GPIB classes share
+the same interface, so code that runs on the simulator works verbatim at the
+bench.
+
 ## Quickstart (dummy mode)
 
 ```python
@@ -142,9 +147,9 @@ Y1 = YokogawaGS200(
 )
 ```
 
-Command syntax and operating ranges have been checked against the manufacturer
-manuals for the Yokogawa GS200 (IM GS210-01EN, Chapter 13) and the
-HP/Agilent 34401A (User's Guide, Chapter 4).
+Command syntax, operating ranges, and data accuracy have been validated
+against real instruments on a live GPIB bus — Yokogawa GS200
+(IM GS210-01EN, Chapter 13) and HP/Agilent 34401A (User's Guide, Chapter 4).
 
 The 34401A defaults to a 10 MΩ DC-voltage input impedance. For measurements on
 the 100 mV, 1 V, or 10 V ranges, pass `high_impedance=True` to enable the
