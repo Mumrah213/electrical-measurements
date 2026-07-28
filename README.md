@@ -9,15 +9,8 @@ Y1.get_name()   # -> "source-drain bias"
 HP1.read()      # -> gain-corrected reading
 ```
 
-You don't need lab hardware to develop or test code. The same instrument classes
-work with a dummy backend that simulates a device under test, and switching to
-real hardware is just a one-line transport change—your measurement code stays
-the same.
-
 emeas has been **validated against real Yokogawa GS200 and HP 34401A instruments
-in a live lab environment**. The dummy backend and the real GPIB classes share
-the same interface, so code that runs on the simulator works verbatim at the
-bench.
+in a live lab environment** over the course of several years. 
 
 ## Quickstart (dummy mode)
 
@@ -55,10 +48,6 @@ grid = df.pivot(
 )
 ```
 
-If you prefer, you can just write your own nested `for` loops over the instrument
-objects. The measurement helpers are there for convenience, not because you're
-expected to use a framework.
-
 ## Live GUI and HDF5 storage
 
 A PyQt6 + pyqtgraph GUI streams measurements into a live plot while saving every
@@ -71,19 +60,10 @@ emeas-gui                    # writes ./emeas_data.h5
 emeas-gui my_fridge.h5       # custom database path
 ```
 
-By default, the dummy backend is connected to a simple Coulomb-diamond
-quantum-dot model. A 2D bias-versus-gate scan produces the familiar
-Coulomb-blockade diamond pattern, while a 1D bias sweep shows the conductance
-turn-on. The **Settle (ms)** control slows down acquisition (50 ms by default)
-so you can watch the data arrive in real time.
-
-The 2D view uses the standard convention of gate voltage on the x-axis and
-source-drain bias on the y-axis. You can display either **dI/dV** (the default,
-calculated numerically along the bias axis) or the raw current, and choose from
-several built-in colormaps. dI/dV is shown with a zero-centred diverging colour
-scale.
-
-The GUI has two tabs:
+The GUI has three tabs:
+- **Instruments** — Used to keep track of instruments. Can be discovered
+  automatically by sweeping the network for GPIB devices, or by manually
+  defining them.
 
 - **Measure** — Run either a 1D sweep or a 2D map, configure the sweep
   parameters, add an optional label and tags, then start or stop the measurement.
@@ -99,7 +79,7 @@ The GUI has two tabs:
 
 ## Streaming measurements from scripts
 
-The same generators used by the GUI can also be used directly:
+The generators used by the GUI can also be used directly:
 
 ```python
 from emeas import iter_linear_sweep
@@ -129,14 +109,8 @@ with H5Store("data.h5") as store:
         settings/<role>/ attrs: instrument settings() snapshots
 ```
 
-Run numbers are persistent and continue across sessions. Labels and tags can be
-edited later. You can inspect the file with `h5ls -r data.h5` or access it
-programmatically with `store.read_run()` and `store.list_runs()`.
 
 ## Using real hardware
-
-Switching from the simulator to a real GPIB instrument only requires replacing
-the transport:
 
 ```python
 from emeas import VisaTransport
@@ -149,7 +123,7 @@ Y1 = YokogawaGS200(
 
 Command syntax, operating ranges, and data accuracy have been validated
 against real instruments on a live GPIB bus — Yokogawa GS200
-(IM GS210-01EN, Chapter 13) and HP/Agilent 34401A (User's Guide, Chapter 4).
+ and HP 34401A.
 
 The 34401A defaults to a 10 MΩ DC-voltage input impedance. For measurements on
 the 100 mV, 1 V, or 10 V ranges, pass `high_impedance=True` to enable the
@@ -176,20 +150,16 @@ uv sync --extra dev      # or: pip install -e .[dev]
 uv run pytest            # or: pytest
 ```
 
-The backend, storage layer, and GUI worker are all tested headlessly, including
-tests that exercise a real `QThread`. Qt tests can be run without a display:
-
 ```bash
 QT_QPA_PLATFORM=offscreen pytest
 ```
 
-## Docker
+## Docker - not for PyQt based GUI
 
 ```bash
 docker build -t emeas .
 docker run --rm emeas
 ```
 
-To use real GPIB hardware inside a container, the host's VISA backend and
-USB-GPIB device need to be made available to the container. The dummy backend
-requires no additional setup.
+To use GPIB hardware inside a container, the host's VISA backend and
+USB-GPIB device need to be made available to the container. 
