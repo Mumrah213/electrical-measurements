@@ -57,6 +57,39 @@ def iter_linear_sweep(
         yield {"set_voltage": float(v), meter.get_name(): meter.read()}
 
 
+def iter_linear_sweep_group(
+    sources: Sequence[VoltageSource],
+    bounds: Sequence[tuple[float, float]],
+    meter: Multimeter,
+    points: int,
+    *,
+    settle: float = 0.0,
+    fixed: Mapping[VoltageSource, float] | None = None,
+) -> Iterator[dict]:
+    """Yield one point at a time while sweeping several sources in lockstep.
+
+    Each source in ``sources`` gets its own ``(start, stop)`` from ``bounds``
+    but they share the same point count and are driven together at each index
+    -- e.g. two gates swept synchronized (same step index) but with different
+    ranges, to trace a fixed offset between them. Each point is
+    ``{<source.name>: v, ..., <meter.name>: reading}``.
+    """
+    _apply_fixed(fixed)
+    setpoints = [np.linspace(start, stop, points) for start, stop in bounds]
+    names = [src.get_name() for src in sources]
+    m_name = meter.get_name()
+    for i in range(points):
+        row: dict = {}
+        for src, name, values in zip(sources, names, setpoints):
+            v = float(values[i])
+            src.set_voltage(v)
+            row[name] = v
+        if settle:
+            time.sleep(settle)
+        row[m_name] = meter.read()
+        yield row
+
+
 def iter_map_2d(
     source_x: VoltageSource,
     source_y: VoltageSource,
@@ -91,6 +124,51 @@ def iter_map_2d(
                 y_name: float(y),
                 m_name: meter.read(),
             }
+
+
+def iter_map_2d_group(
+    sources_x: Sequence[VoltageSource],
+    bounds_x: Sequence[tuple[float, float]],
+    points_x: int,
+    sources_y: Sequence[VoltageSource],
+    bounds_y: Sequence[tuple[float, float]],
+    points_y: int,
+    meter: Multimeter,
+    *,
+    settle: float = 0.0,
+    fixed: Mapping[VoltageSource, float] | None = None,
+) -> Iterator[dict]:
+    """Raster a group of lockstep-synced X sources against a group of Y sources.
+
+    Generalizes :func:`iter_map_2d` to more than one instrument per axis: all
+    sources in ``sources_x`` are swept together (same step index) across
+    ``points_x`` steps for each step of ``sources_y`` swept together across
+    ``points_y`` steps. Each point includes grid indices ``ix``/``iy`` plus the
+    setpoints and reading, keyed by instrument display name.
+    """
+    _apply_fixed(fixed)
+    x_setpoints = [np.linspace(start, stop, points_x) for start, stop in bounds_x]
+    y_setpoints = [np.linspace(start, stop, points_y) for start, stop in bounds_y]
+    x_names = [src.get_name() for src in sources_x]
+    y_names = [src.get_name() for src in sources_y]
+    m_name = meter.get_name()
+
+    for iy in range(points_y):
+        row_y: dict = {}
+        for src, name, values in zip(sources_y, y_names, y_setpoints):
+            v = float(values[iy])
+            src.set_voltage(v)
+            row_y[name] = v
+        for ix in range(points_x):
+            row: dict = {"ix": ix, "iy": iy, **row_y}
+            for src, name, values in zip(sources_x, x_names, x_setpoints):
+                v = float(values[ix])
+                src.set_voltage(v)
+                row[name] = v
+            if settle:
+                time.sleep(settle)
+            row[m_name] = meter.read()
+            yield row
 
 
 def linear_sweep(

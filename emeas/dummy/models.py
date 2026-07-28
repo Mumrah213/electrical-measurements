@@ -16,22 +16,37 @@ from __future__ import annotations
 import numpy as np
 
 
+#: channel key used for writes/reads that don't name a channel, so a lone
+#: instrument on a model (no ``channel=`` given) keeps today's behavior.
+_DEFAULT_CHANNEL = "__default__"
+
+
 class DeviceModel:
     """Base model: ohmic resistor between the sourced node and ground.
 
     State:
-      * ``node_voltage`` -- last voltage written by a source (volts).
-      * ``resistance``   -- DUT resistance (ohms); current = V / R.
+      * ``channel_voltages`` -- per-channel last voltage written by a source
+        (volts), keyed by the ``channel`` a :class:`~emeas.transport.DummyTransport`
+        was constructed with (``None`` normalizes to a shared default key, so
+        a single unchanneled instrument on its own model behaves as before).
+        Several instruments *can* share one model on distinct channels without
+        clobbering each other's setpoint.
+      * ``node_voltage``     -- the *last-written* channel's voltage; kept as
+        the value :meth:`voltage`/:meth:`current` read from, since the base
+        model represents a single-node DUT (only :class:`CoulombDiamondModel`
+        tracks more than one channel's value in its own physics).
+      * ``resistance``       -- DUT resistance (ohms); current = V / R.
 
     Queries understood:
       * ``MEAS:VOLT?`` / ``READ?`` (when in volt mode) -> node voltage
       * ``MEAS:CURR?``                                 -> current through DUT
-      * ``SOUR:LEV?``                                  -> last setpoint
+      * ``SOUR:LEV?``                                  -> this channel's last setpoint
     """
 
     def __init__(self, resistance: float = 1.0e6, noise: float = 0.0, seed: int | None = None):
         self.resistance = float(resistance)
         self.noise = float(noise)
+        self.channel_voltages: dict[str, float] = {}
         self.node_voltage = 0.0
         self._rng = np.random.default_rng(seed)
 
@@ -42,13 +57,15 @@ class DeviceModel:
         # Accept the GS200 level command SOUR:LEV (and the older SOUR:VOLT alias).
         if (upper.startswith("SOUR:LEV") or upper.startswith("SOUR:VOLT")) and " " in cmd:
             # e.g. "SOUR:LEV 0.5"
-            self.node_voltage = float(cmd.split()[-1])
+            value = float(cmd.split()[-1])
+            self.channel_voltages[channel or _DEFAULT_CHANNEL] = value
+            self.node_voltage = value
 
     # -- meter side --------------------------------------------------------
     def handle_query(self, command: str, channel: str | None = None) -> str:
         upper = command.strip().upper()
         if upper.startswith("SOUR:LEV?") or upper.startswith("SOUR:VOLT?"):
-            return f"{self.node_voltage:.6e}"
+            return f"{self.channel_voltages.get(channel or _DEFAULT_CHANNEL, 0.0):.6e}"
         if upper.startswith("MEAS:CURR?") or "CURR" in upper:
             return f"{self._noisy(self.current()):.6e}"
         # default: a voltage measurement (MEAS:VOLT?, READ?, FETCH?)
@@ -144,10 +161,16 @@ class CoulombDiamondModel(DeviceModel):
         upper = cmd.upper()
         if (upper.startswith("SOUR:LEV") or upper.startswith("SOUR:VOLT")) and " " in cmd:
             value = float(cmd.split()[-1])
+            self.channel_voltages[channel or _DEFAULT_CHANNEL] = value
             self.node_voltage = value
+            # Only "gate" and "bias" (or unchanneled, treated as bias for
+            # backward compatibility) feed the diamond physics; any other
+            # named channel is an independent instrument on this shared DUT
+            # (e.g. a fixed sidegate) that reads back its own setpoint via
+            # channel_voltages above but doesn't perturb the gate/bias state.
             if channel == "gate":
                 self.v_gate = value
-            else:  # default / "bias"
+            elif channel in (None, "bias"):
                 self.v_bias = value
 
     def voltage(self) -> float:

@@ -61,6 +61,27 @@ class VisaTransport(Transport):
             pass
 
 
+def list_gpib_resources(resource_manager=None) -> list[str]:
+    """Return connected GPIB VISA resource strings (e.g. ``"GPIB0::3::INSTR"``).
+
+    Best-effort: if PyVISA isn't installed, no VISA backend is available, or
+    the scan otherwise fails, this returns an empty list rather than raising
+    -- callers (the GUI's "Search for GPIB instruments" button) treat an empty
+    result as "nothing found," not an error, and fall back to a dummy rig.
+    """
+    try:
+        if resource_manager is not None:
+            rm = resource_manager
+        else:
+            import pyvisa
+
+            rm = pyvisa.ResourceManager()
+        resources = rm.list_resources()
+    except Exception:
+        return []
+    return [r for r in resources if r.upper().startswith("GPIB")]
+
+
 class DummyTransport(Transport):
     """In-memory transport that drives a simulated :class:`DeviceModel`.
 

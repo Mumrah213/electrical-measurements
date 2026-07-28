@@ -25,6 +25,7 @@ The storage layer is Qt-free and usable from plain scripts::
 from __future__ import annotations
 
 import json
+import time
 from datetime import datetime, timezone
 
 import h5py
@@ -42,11 +43,16 @@ def _iso_now() -> str:
 class RunWriter:
     """Handle to a single run's group; appends streamed points to HDF5."""
 
+    #: minimum seconds between flushes while streaming; a flush per point makes
+    #: appends dominated by disk syncs and stalls the GUI thread at high rates
+    _FLUSH_INTERVAL_S = 1.0
+
     def __init__(self, group: h5py.Group, file: h5py.File):
         self._g = group
         self._file = file
         self._data = group["data"]
         self._columns: list[str] | None = None
+        self._last_flush = 0.0
 
     @property
     def run_number(self) -> int:
@@ -78,14 +84,21 @@ class RunWriter:
         self._columns = list(self._data.keys())
 
     def append(self, point: dict) -> None:
-        """Append one streamed point; datasets grow by one row and flush."""
+        """Append one streamed point; datasets grow by one row.
+
+        Flushes to disk at most every :attr:`_FLUSH_INTERVAL_S` (a crash loses
+        at most that last window of points); :meth:`close` flushes the rest.
+        """
         self._ensure_columns(point)
         for name in self._columns:
             ds = self._data[name]
             n = ds.shape[0]
             ds.resize((n + 1,))
             ds[n] = point.get(name, np.nan)
-        self._file.flush()
+        now = time.monotonic()
+        if now - self._last_flush >= self._FLUSH_INTERVAL_S:
+            self._file.flush()
+            self._last_flush = now
 
     def close(self) -> None:
         self._g.attrs["finished_iso"] = _iso_now()
